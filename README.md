@@ -35,7 +35,7 @@ Retrieval-Augmented Generation (RAG) pipeline — with source citations.
 - **Streamlit** — one Python codebase gives you the UI, no separate frontend, and deploys for free on Streamlit Community Cloud.
 - **LangChain** — standardizes the embeddings/LLM/vector-store interfaces so swapping OpenAI ↔ Gemini is a one-line change.
 - **ChromaDB** — an embedded, file-based vector database. No server to run or pay for.
-- **yt-dlp + youtube-transcript-api** — yt-dlp pulls rich metadata (title, channel, duration, chapters); youtube-transcript-api pulls the actual transcript text. Both support routing through a proxy, which matters because YouTube sometimes rate-limits or blocks a host's IP outright (the library raises `IpBlocked`/`RequestBlocked` in that case — common on free cloud hosts, see [Limitations](#9-limitations-of-the-free-deployment)).
+- **yt-dlp + youtube-transcript-api** — yt-dlp pulls rich metadata (title, channel, duration, chapters); youtube-transcript-api pulls the actual transcript text. Both support routing through a proxy, which matters because YouTube rate-limits/blocks IPs by reputation (the library raises `IpBlocked`/`RequestBlocked` in that case — happens on home IPs too, not just cloud hosts, see [Limitations](#9-limitations-of-the-free-deployment)).
 - **trafilatura** — purpose-built boilerplate/ad/nav removal for web articles (much cleaner than a hand-rolled BeautifulSoup scraper), with a BeautifulSoup fallback if it comes back empty.
 - **cloudscraper** — many sites sit behind a Cloudflare-style bot challenge that blocks plain `requests` calls with a 403 even with realistic browser headers. cloudscraper solves that challenge (the same thing your browser's JS already does) so ordinary public articles you can view yourself still get scraped automatically.
 - **Paste Content fallback** — for the smaller set of sites protected by something cloudscraper can't solve (CAPTCHA-gated, advanced bot management), the app lets you paste content you've already opened in your own browser — it's indexed through the exact same chunk→embed→store pipeline as a scraped page.
@@ -130,8 +130,13 @@ GOOGLE_API_KEY=...
 DEFAULT_LLM_PROVIDER=openai          # or gemini
 DEFAULT_EMBEDDING_PROVIDER=openai    # or gemini
 
-# Optional — only needed if YouTube blocks your host's IP (common on free cloud hosts)
-YT_PROXY_URL=http://user:pass@proxy-host:port
+# Optional — fixes "YouTube blocked the transcript request" errors (happens on home IPs
+# too, not just cloud hosts). Preferred: Webshare, which the library integrates with
+# natively (auto-rotating IPs + retry, free tier at webshare.io):
+WEBSHARE_PROXY_USERNAME=your-webshare-username
+WEBSHARE_PROXY_PASSWORD=your-webshare-password
+# Or any other plain HTTP(S) proxy instead:
+# YT_PROXY_URL=http://user:pass@proxy-host:port
 
 # Required to unlock Home, Add Sources, and View Sources (Ask Questions stays public)
 APP_PASSWORD=choose-a-real-secret-here
@@ -179,7 +184,8 @@ kind of app, free tier, deploys directly from a GitHub repo.
    GOOGLE_API_KEY = "..."
    DEFAULT_LLM_PROVIDER = "openai"
    DEFAULT_EMBEDDING_PROVIDER = "openai"
-   YT_PROXY_URL = "http://user:pass@proxy-host:port"
+   WEBSHARE_PROXY_USERNAME = "your-webshare-username"
+   WEBSHARE_PROXY_PASSWORD = "your-webshare-password"
    APP_PASSWORD = "choose-a-real-secret-here"
    ```
    (`core/config.py`'s `get_api_key`/`get_app_password` check `st.secrets` automatically, no code changes needed.)
@@ -198,10 +204,12 @@ than Streamlit Cloud's sleep-on-inactivity behavior, though storage is equally e
   wiped on redeploy, restart after inactivity, or container recycling. Treat the hosted
   app as a demo, not a durable knowledge store — re-add your sources after a reset, or
   see improvement #2 below for a permanent fix.
-- **YouTube blocks datacenter IPs.** Cloud hosts share IP ranges YouTube actively blocks
-  for both `yt-dlp` metadata scraping and transcript fetches, so ingestion that works
-  locally can fail once deployed. This app supports routing both through a proxy via
-  `YT_PROXY_URL` (e.g. a residential proxy from a provider like Webshare) — set it before
+- **YouTube blocks/rate-limits IPs by reputation**, not just datacenter ranges — this can
+  happen on home connections too, and shows up as `IpBlocked`/`RequestBlocked` errors on
+  transcript fetches (or `yt-dlp` metadata fetches). Fix by setting
+  `WEBSHARE_PROXY_USERNAME`/`WEBSHARE_PROXY_PASSWORD` (preferred — the library's built-in
+  Webshare integration auto-rotates IPs and retries; free tier at webshare.io) or
+  `YT_PROXY_URL` for any other proxy — set it before
   relying on YouTube ingestion in production.
 - **App sleeps on inactivity.** Streamlit Community Cloud apps go to sleep after ~a
   few days with no traffic and take ~30-60s to wake on the next visit.

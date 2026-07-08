@@ -65,13 +65,27 @@ def save_app_config(config: AppConfig) -> None:
 
 
 def get_youtube_proxy_config():
-    """Optional HTTP(S) proxy for youtube-transcript-api.
+    """Optional proxy for youtube-transcript-api.
 
-    YouTube sometimes rate-limits or blocks a host's IP for transcript requests
-    (the library raises IpBlocked/RequestBlocked when this happens). Set YT_PROXY_URL
-    (or separate YT_PROXY_HTTP/YT_PROXY_HTTPS) to route around that, e.g. using a
-    residential proxy provider such as Webshare. Returns None if unconfigured.
+    YouTube frequently rate-limits or blocks a host's IP for transcript requests (the
+    library raises IpBlocked/RequestBlocked when this happens) — this affects home IPs
+    too, not just cloud hosts. Two ways to configure a fix, checked in this order:
+
+    1. WEBSHARE_PROXY_USERNAME/WEBSHARE_PROXY_PASSWORD — uses youtube-transcript-api's
+       built-in Webshare integration, which auto-rotates IPs and retries on block. This
+       is the library's own recommended fix. Webshare has a free tier (10 proxies).
+    2. YT_PROXY_URL (or separate YT_PROXY_HTTP/YT_PROXY_HTTPS) — a plain HTTP(S) proxy
+       from any other provider.
+
+    Returns None if neither is configured.
     """
+    webshare_username = os.getenv("WEBSHARE_PROXY_USERNAME")
+    webshare_password = os.getenv("WEBSHARE_PROXY_PASSWORD")
+    if webshare_username and webshare_password:
+        from youtube_transcript_api.proxies import WebshareProxyConfig
+
+        return WebshareProxyConfig(proxy_username=webshare_username, proxy_password=webshare_password)
+
     single = os.getenv("YT_PROXY_URL")
     http_proxy = os.getenv("YT_PROXY_HTTP", single)
     https_proxy = os.getenv("YT_PROXY_HTTPS", single)
