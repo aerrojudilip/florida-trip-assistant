@@ -17,7 +17,7 @@ from core.rag.vector_store import add_documents, delete_by_source_id, get_vector
 
 store = MetadataStore()
 
-ANSWER_PROMPT = """You are a helpful assistant that answers questions using ONLY the context provided below.
+ANSWER_PROMPT = """You are a knowledgeable assistant that answers questions using ONLY the context provided below.
 If the context does not contain enough information to answer, say so clearly instead of guessing.
 
 Context:
@@ -25,7 +25,11 @@ Context:
 
 Question: {question}
 
-Answer concisely and mention which source(s) you used by title.
+Write a thorough, well-organized answer that makes full use of the relevant information in
+the context — don't compress it into one or two sentences if more detail is available.
+Use multiple paragraphs, bullet points, or numbered steps where that makes the answer easier
+to follow. Include specifics (names, numbers, steps, caveats) from the context rather than
+vague generalities. End with a "Sources:" line listing which source title(s) you drew from.
 """
 
 

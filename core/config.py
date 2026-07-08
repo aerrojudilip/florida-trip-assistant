@@ -47,7 +47,7 @@ class AppConfig:
     llm_provider: str = os.getenv("DEFAULT_LLM_PROVIDER", "openai")
     llm_model: str = LLM_MODELS.get(os.getenv("DEFAULT_LLM_PROVIDER", "openai"), ["gpt-4o-mini"])[0]
     embedding_provider: str = os.getenv("DEFAULT_EMBEDDING_PROVIDER", "openai")
-    retrieval_k: int = 4
+    retrieval_k: int = 6
 
 
 def load_app_config() -> AppConfig:
