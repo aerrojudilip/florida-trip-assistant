@@ -1,0 +1,15 @@
+streamlit>=1.38
+langchain>=0.3
+langchain-core>=0.3
+langchain-text-splitters>=0.3
+langchain-openai>=0.2
+langchain-google-genai>=2.0
+langchain-chroma>=0.1.4
+chromadb>=0.5
+youtube-transcript-api>=1.0.0,<2
+yt-dlp>=2024.10.7
+trafilatura>=1.12
+cloudscraper>=1.2.71
+beautifulsoup4>=4.12
+requests>=2.32
+python-dotenv>=1.0
