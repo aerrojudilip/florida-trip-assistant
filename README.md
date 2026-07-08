@@ -8,8 +8,9 @@ Retrieval-Augmented Generation (RAG) pipeline — with source citations.
 
 ```
 ┌─────────────────────────────── Streamlit UI ───────────────────────────────┐
-│  app.py (Home + provider config)                                           │
-│  pages/1_Add_Sources.py   pages/2_Ask_Questions.py   pages/3_View_Sources.py│
+│  app.py (st.navigation — picks the page list below by auth state)          │
+│  🔒 Admin (needs APP_PASSWORD): Home · Add Sources · View Sources          │
+│  🌐 Public: Ask Questions                                                  │
 └──────────────┬───────────────────────┬──────────────────────┬──────────────┘
                │                       │                      │
                ▼                       ▼                      ▼
@@ -38,6 +39,7 @@ Retrieval-Augmented Generation (RAG) pipeline — with source citations.
 - **trafilatura** — purpose-built boilerplate/ad/nav removal for web articles (much cleaner than a hand-rolled BeautifulSoup scraper), with a BeautifulSoup fallback if it comes back empty.
 - **cloudscraper** — many sites sit behind a Cloudflare-style bot challenge that blocks plain `requests` calls with a 403 even with realistic browser headers. cloudscraper solves that challenge (the same thing your browser's JS already does) so ordinary public articles you can view yourself still get scraped automatically.
 - **Paste Content fallback** — for the smaller set of sites protected by something cloudscraper can't solve (CAPTCHA-gated, advanced bot management), the app lets you paste content you've already opened in your own browser — it's indexed through the exact same chunk→embed→store pipeline as a scraped page.
+- **Password-gated admin pages** — Home, Add Sources, and View Sources require `APP_PASSWORD`; Ask Questions stays public. Built with `st.navigation`/`st.Page` so the gated pages aren't just content-blocked, they're not even listed in the sidebar until you log in (see `core/auth.py`).
 
 ## 2. RAG workflow explanation
 
@@ -61,12 +63,15 @@ Retrieval-Augmented Generation (RAG) pipeline — with source citations.
 
 ```
 DW_1/
-├── app.py                          # Home page + sidebar provider/model config
-├── pages/
-│   ├── 1_Add_Sources.py            # Submit YouTube/website links or paste content
-│   ├── 2_Ask_Questions.py          # Chat interface over the knowledge base
-│   └── 3_View_Sources.py           # List + delete indexed sources
+├── app.py                          # Entry point: st.navigation picks the page list by auth state
+├── app_pages/
+│   ├── home.py                     # 🔒 Sidebar provider/model config + log out
+│   ├── add_sources.py              # 🔒 Submit YouTube/website links or paste content
+│   ├── ask_questions.py            # 🌐 Public chat interface over the knowledge base
+│   ├── view_sources.py             # 🔒 List + delete indexed sources
+│   └── admin_login.py              # Password entry (shown to unauthenticated visitors)
 ├── core/
+│   ├── auth.py                     # Session-based password gate (compares against APP_PASSWORD)
 │   ├── config.py                   # Env vars, provider/model registry, app config persistence
 │   ├── exceptions.py                # Custom error types
 │   ├── ingestion/
@@ -91,7 +96,7 @@ DW_1/
 │   ├── config.toml                 # Theme
 │   └── secrets.toml.example        # Template for cloud secrets
 ├── requirements.txt
-├── .env.example
+├── setEnv.env.example               # Template — copy to setEnv.env and fill in real values
 └── .gitignore
 ```
 
@@ -114,7 +119,9 @@ and [core/config.py](core/config.py) (provider/model configuration).
 
 ## 6. Environment variable setup
 
-Copy `.env.example` to `.env` and fill in at least one LLM provider's key:
+Copy `setEnv.env.example` to `setEnv.env` and fill in at least one LLM provider's key
+(this is the file `core/config.py` loads locally — see `load_dotenv(BASE_DIR / "setEnv.env")`;
+a legacy `.env` is still loaded as a fallback if you have one from before):
 
 ```
 OPENAI_API_KEY=sk-...
@@ -125,10 +132,14 @@ DEFAULT_EMBEDDING_PROVIDER=openai    # or gemini
 
 # Optional — only needed if YouTube blocks your host's IP (common on free cloud hosts)
 YT_PROXY_URL=http://user:pass@proxy-host:port
+
+# Required to unlock Home, Add Sources, and View Sources (Ask Questions stays public)
+APP_PASSWORD=choose-a-real-secret-here
 ```
 
 You only need the key(s) for the provider(s) you plan to use. The sidebar shows a ✅/❌
 status for each provider so you can tell at a glance whether a key is configured.
+`setEnv.env` is gitignored — never commit it.
 
 ## 7. Steps to run locally
 
@@ -142,34 +153,36 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # 3. Configure secrets
-copy .env.example .env         # Windows
-# cp .env.example .env         # macOS/Linux
-# then edit .env with your API keys
+copy setEnv.env.example setEnv.env   # Windows
+# cp setEnv.env.example setEnv.env   # macOS/Linux
+# then edit setEnv.env with your API keys and a real APP_PASSWORD
 
 # 4. Run the app
 streamlit run app.py
 ```
 
-The app opens at `http://localhost:8501`. Go to **Add Sources** to add a YouTube link or
-website URL, then **Ask Questions** to query your knowledge base.
+The app opens at `http://localhost:8501`. Only **Ask Questions** and **Admin Login** are
+visible at first — enter your `APP_PASSWORD` on the Admin Login page to reveal **Home**,
+**Add Sources**, and **View Sources** in the sidebar.
 
 ## 8. Steps to deploy on a free hosting platform
 
 **Recommended: Streamlit Community Cloud** (share.streamlit.io) — built for exactly this
 kind of app, free tier, deploys directly from a GitHub repo.
 
-1. Push this project to a **public** (or private, on your own GitHub account) GitHub repo. Make sure `.env` and `data/` are NOT committed (already in `.gitignore`).
+1. Push this project to a **public** (or private, on your own GitHub account) GitHub repo. Make sure `setEnv.env`/`.env` are NOT committed (already in `.gitignore`); `data/` is fine to commit if you want the deploy to start pre-loaded with your local knowledge base.
 2. Go to https://share.streamlit.io and sign in with GitHub.
 3. Click **New app**, select your repo/branch, and set the main file path to `app.py`.
-4. Before deploying (or after, in **App settings → Secrets**), paste your secrets in TOML format — this is the cloud equivalent of your `.env` file:
+4. Before deploying (or after, in **App settings → Secrets**), paste your secrets in TOML format — this is the cloud equivalent of `setEnv.env`:
    ```toml
    OPENAI_API_KEY = "sk-..."
    GOOGLE_API_KEY = "..."
    DEFAULT_LLM_PROVIDER = "openai"
    DEFAULT_EMBEDDING_PROVIDER = "openai"
    YT_PROXY_URL = "http://user:pass@proxy-host:port"
+   APP_PASSWORD = "choose-a-real-secret-here"
    ```
-   (`core/config.py`'s `get_api_key` checks `st.secrets` automatically, no code changes needed.)
+   (`core/config.py`'s `get_api_key`/`get_app_password` check `st.secrets` automatically, no code changes needed.)
 5. Click **Deploy**. The first build installs `requirements.txt` and takes a few minutes.
 6. Your app is live at `https://<your-app-name>.streamlit.app`.
 
@@ -194,9 +207,12 @@ than Streamlit Cloud's sleep-on-inactivity behavior, though storage is equally e
   few days with no traffic and take ~30-60s to wake on the next visit.
 - **Resource limits.** Free tier caps CPU/RAM (roughly 1 vCPU / 1 GB) and concurrent
   users. Large ingested sources or many simultaneous questions can be slow or OOM.
-- **No built-in auth.** Anyone with the URL can add sources, ask questions, and consume
-  your API quota/spend. Keep the URL private or add auth (see improvements below) before
-  sharing broadly.
+- **Lightweight auth only.** `APP_PASSWORD` gates Home/Add Sources/View Sources behind a
+  single shared password stored in `st.session_state` — fine for keeping casual visitors
+  out of admin functions, but it's not per-user auth, has no rate limiting or lockout, and
+  Ask Questions itself is intentionally public (so anyone with the URL can query the
+  knowledge base and consume your LLM API quota). For real multi-user auth, see
+  improvements below.
 - **Single-writer JSON metadata store.** Fine for one user; concurrent writers could race.
 
 ## 10. Suggestions to improve the app later
