@@ -16,10 +16,11 @@ load_dotenv(BASE_DIR / ".env", override=False)
 DATA_DIR = BASE_DIR / "data"
 MARKDOWN_DIR = DATA_DIR / "markdown"
 CHROMA_DIR = DATA_DIR / "chroma_db"
+CHAT_HISTORY_DIR = DATA_DIR / "chat_history"
 METADATA_FILE = DATA_DIR / "metadata.json"
 APP_CONFIG_FILE = DATA_DIR / "app_config.json"
 
-for _path in (DATA_DIR, MARKDOWN_DIR, CHROMA_DIR):
+for _path in (DATA_DIR, MARKDOWN_DIR, CHROMA_DIR, CHAT_HISTORY_DIR):
     _path.mkdir(parents=True, exist_ok=True)
 
 LLM_PROVIDERS = ["openai", "gemini"]

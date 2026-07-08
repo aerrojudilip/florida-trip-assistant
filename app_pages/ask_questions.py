@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import uuid
+
 import streamlit as st
 
+from core.chat_history import load_history, save_history
 from core.config import load_app_config
 from core.exceptions import LLMError, VectorStoreError
 from core.rag.pipeline import answer_question
@@ -11,8 +14,28 @@ st.title("💬 Ask Your Knowledge Base")
 config = load_app_config()
 st.caption(f"Using **{config.llm_provider}** ({config.llm_model}) with **{config.embedding_provider}** embeddings.")
 
+
+def _get_session_id() -> str:
+    sid = st.query_params.get("sid")
+    if not sid:
+        sid = uuid.uuid4().hex
+        st.query_params["sid"] = sid
+    return sid
+
+
+session_id = _get_session_id()
+
 if "chat_history" not in st.session_state:
+    st.session_state.chat_history = load_history(session_id)
+
+st.caption(
+    "Your conversation is saved to this browser tab's link — bookmark or reopen the "
+    "same URL to resume it. Anyone with this exact link can view this chat."
+)
+if st.button("🗑️ Clear chat history"):
     st.session_state.chat_history = []
+    save_history(session_id, [])
+    st.rerun()
 
 
 def render_sources(sources: list[dict]) -> None:
@@ -45,6 +68,7 @@ if question:
                 st.session_state.chat_history.append(
                     {"question": question, "answer": result.text, "sources": result.sources}
                 )
+                save_history(session_id, st.session_state.chat_history)
             except (LLMError, VectorStoreError) as exc:
                 st.error(str(exc))
             except Exception as exc:  # noqa: BLE001
