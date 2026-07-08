@@ -6,7 +6,6 @@ from core.config import load_app_config
 from core.exceptions import LLMError, VectorStoreError
 from core.rag.pipeline import answer_question
 
-st.set_page_config(page_title="Ask Questions", page_icon="💬")
 st.title("💬 Ask Your Knowledge Base")
 
 config = load_app_config()

@@ -6,7 +6,6 @@ from core.config import load_app_config
 from core.exceptions import IngestionError, VectorStoreError
 from core.rag.pipeline import ingest_source
 
-st.set_page_config(page_title="Add Sources", page_icon="➕")
 st.title("➕ Add a Knowledge Source")
 
 config = load_app_config()

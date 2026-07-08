@@ -7,7 +7,6 @@ from core.exceptions import VectorStoreError
 from core.metadata.store import MetadataStore
 from core.rag.pipeline import delete_source
 
-st.set_page_config(page_title="View Sources", page_icon="📄")
 st.title("📄 Added Sources")
 
 config = load_app_config()

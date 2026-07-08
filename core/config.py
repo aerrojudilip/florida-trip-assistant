@@ -7,9 +7,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# setEnv.env is the primary local env file; .env is still loaded (without overriding
+# anything setEnv.env already set) so older local setups keep working.
+load_dotenv(BASE_DIR / "setEnv.env")
+load_dotenv(BASE_DIR / ".env", override=False)
 DATA_DIR = BASE_DIR / "data"
 MARKDOWN_DIR = DATA_DIR / "markdown"
 CHROMA_DIR = DATA_DIR / "chroma_db"
@@ -98,5 +101,19 @@ def get_api_key(provider: str) -> str | None:
         import streamlit as st
 
         return st.secrets.get(env_var)
+    except Exception:
+        return None
+
+
+def get_app_password() -> str | None:
+    """Password required to unlock Home, Add Sources, and View Sources."""
+    value = os.getenv("APP_PASSWORD")
+    if value:
+        return value
+
+    try:
+        import streamlit as st
+
+        return st.secrets.get("APP_PASSWORD")
     except Exception:
         return None
