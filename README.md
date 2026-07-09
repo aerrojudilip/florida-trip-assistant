@@ -35,7 +35,7 @@ Retrieval-Augmented Generation (RAG) pipeline — with source citations.
 - **Streamlit** — one Python codebase gives you the UI, no separate frontend, and deploys for free on Streamlit Community Cloud.
 - **LangChain** — standardizes the embeddings/LLM/vector-store interfaces so swapping OpenAI ↔ Gemini is a one-line change.
 - **ChromaDB** — an embedded, file-based vector database. No server to run or pay for.
-- **yt-dlp + youtube-transcript-api** — yt-dlp pulls rich metadata (title, channel, duration, chapters); youtube-transcript-api pulls the actual transcript text. Both support routing through a proxy, which matters because YouTube rate-limits/blocks IPs by reputation (the library raises `IpBlocked`/`RequestBlocked` in that case — happens on home IPs too, not just cloud hosts, see [Limitations](#9-limitations-of-the-free-deployment)).
+- **yt-dlp (primary) + youtube-transcript-api (fallback)** for YouTube — yt-dlp pulls rich metadata (title, channel, duration, chapters) *and* is now the primary transcript source too: it downloads the actual caption track (human-written if available, else auto-generated) and we parse the VTT into plain text. This matters because `youtube-transcript-api`'s cookie support is currently disabled upstream, so once YouTube starts showing "sign in to confirm you're not a bot" or blocking a host's IP for transcript requests (`IpBlocked`/`RequestBlocked` — happens on home IPs too, not just cloud hosts), that library has no way past it, while yt-dlp does via `YT_COOKIES_FILE`/`YT_COOKIES_FROM_BROWSER`. `youtube-transcript-api` (with optional proxy) only kicks in if a video has no captions at all. See [Limitations](#9-limitations-of-the-free-deployment).
 - **trafilatura** — purpose-built boilerplate/ad/nav removal for web articles (much cleaner than a hand-rolled BeautifulSoup scraper), with a BeautifulSoup fallback if it comes back empty.
 - **cloudscraper** — many sites sit behind a Cloudflare-style bot challenge that blocks plain `requests` calls with a 403 even with realistic browser headers. cloudscraper solves that challenge (the same thing your browser's JS already does) so ordinary public articles you can view yourself still get scraped automatically.
 - **Paste Content fallback** — for the smaller set of sites protected by something cloudscraper can't solve (CAPTCHA-gated, advanced bot management), the app lets you paste content you've already opened in your own browser — it's indexed through the exact same chunk→embed→store pipeline as a scraped page.
@@ -130,12 +130,18 @@ GOOGLE_API_KEY=...
 DEFAULT_LLM_PROVIDER=openai          # or gemini
 DEFAULT_EMBEDDING_PROVIDER=openai    # or gemini
 
-# Optional — fixes "YouTube blocked the transcript request" errors (happens on home IPs
-# too, not just cloud hosts). Preferred: Webshare, which the library integrates with
-# natively (auto-rotating IPs + retry, free tier at webshare.io):
-WEBSHARE_PROXY_USERNAME=your-webshare-username
-WEBSHARE_PROXY_PASSWORD=your-webshare-password
-# Or any other plain HTTP(S) proxy instead:
+# Optional — fixes "Sign in to confirm you're not a bot" and, as a side effect, most
+# transcript-blocked errors too (yt-dlp's own caption fetch is tried before the proxy
+# path below). Use a throwaway Google account, not your main one:
+YT_COOKIES_FILE=path/to/cookies.txt
+# Or, for local runs only, with the browser CLOSED (an open browser locks its cookie db):
+# YT_COOKIES_FROM_BROWSER=firefox
+
+# Optional — only relevant for videos with no captions at all, where youtube-transcript-api
+# is used instead of yt-dlp. Proxies rarely help here in practice (see README limitations) —
+# only a genuine rotating residential pool works, not free/trial/static proxy tiers:
+# WEBSHARE_PROXY_USERNAME=your-webshare-username
+# WEBSHARE_PROXY_PASSWORD=your-webshare-password
 # YT_PROXY_URL=http://user:pass@proxy-host:port
 
 # Required to unlock Home, Add Sources, and View Sources (Ask Questions stays public)
@@ -184,11 +190,9 @@ kind of app, free tier, deploys directly from a GitHub repo.
    GOOGLE_API_KEY = "..."
    DEFAULT_LLM_PROVIDER = "openai"
    DEFAULT_EMBEDDING_PROVIDER = "openai"
-   WEBSHARE_PROXY_USERNAME = "your-webshare-username"
-   WEBSHARE_PROXY_PASSWORD = "your-webshare-password"
    APP_PASSWORD = "choose-a-real-secret-here"
    ```
-   (`core/config.py`'s `get_api_key`/`get_app_password` check `st.secrets` automatically, no code changes needed.)
+   (`core/config.py`'s `get_api_key`/`get_app_password` check `st.secrets` automatically, no code changes needed.) `YT_COOKIES_FROM_BROWSER` won't work here — there's no browser on a cloud host. If YouTube ingestion needs cookies on the deployed app, you'd need to get a `cookies.txt`'s contents into a file the app can read (e.g. commit it privately or write it from a secret at startup) — think carefully before putting a personal Google account's session cookies in a shared/deployed app.
 5. Click **Deploy**. The first build installs `requirements.txt` and takes a few minutes.
 6. Your app is live at `https://<your-app-name>.streamlit.app`.
 
@@ -204,22 +208,22 @@ than Streamlit Cloud's sleep-on-inactivity behavior, though storage is equally e
   wiped on redeploy, restart after inactivity, or container recycling. Treat the hosted
   app as a demo, not a durable knowledge store — re-add your sources after a reset, or
   see improvement #2 below for a permanent fix.
-- **YouTube blocks/rate-limits IPs by reputation**, not just datacenter ranges — this can
-  happen on home connections too, and shows up as `IpBlocked`/`RequestBlocked` errors on
-  transcript fetches (or `yt-dlp` metadata fetches). Fix by setting
-  `WEBSHARE_PROXY_USERNAME`/`WEBSHARE_PROXY_PASSWORD` (preferred — the library's built-in
-  Webshare integration auto-rotates IPs and retries; free tier at webshare.io) or
-  `YT_PROXY_URL` for any other proxy — set it before
-  relying on YouTube ingestion in production. Note: a *static* proxy IP (datacenter or a
-  single fixed residential IP) can already be flagged by YouTube too — only a rotating
-  residential pool reliably avoids this.
-- **"Sign in to confirm you're not a bot."** A separate YouTube bot-check that hits
-  `yt-dlp`'s metadata fetch specifically (independent of the transcript-fetch block
-  above). Fix with `YT_COOKIES_FILE` (path to a cookies.txt exported from a logged-in
-  browser — works on cloud hosts too) or `YT_COOKIES_FROM_BROWSER` (browser name, local
-  runs only, since there's no browser to read from on a headless host). Use a
-  throwaway/secondary Google account for this, not your main one — automated requests
-  carry a small risk of the account being flagged.
+- **YouTube anti-bot measures.** Two independent checks can block YouTube ingestion:
+  - **"Sign in to confirm you're not a bot"** — hits `yt-dlp`'s metadata/subtitle fetch.
+    Fix with `YT_COOKIES_FILE` (path to a cookies.txt exported from a logged-in browser —
+    works on cloud hosts too) or `YT_COOKIES_FROM_BROWSER` (browser name; local runs only,
+    since there's no browser to read from on a headless host, and the browser must be
+    **closed** — an open Chrome/Edge locks its cookie database and yt-dlp can't read it).
+    Use a throwaway/secondary Google account, not your main one — automated requests
+    carry a small risk of the account being flagged.
+  - **`IpBlocked`/`RequestBlocked`** on `youtube-transcript-api` — this only matters if a
+    video has *no* captions at all (yt-dlp's own caption download is tried first and
+    doesn't hit this). Proxies are a weak fix here: we tested 10 static datacenter
+    proxies and a Bright Data zone, and YouTube/Bright Data blocked every one — only a
+    genuine rotating **residential** proxy pool works, and even Bright Data gates YouTube
+    access behind a KYC process. `WEBSHARE_PROXY_USERNAME`/`PASSWORD` or `YT_PROXY_URL`
+    are wired up if you have working residential proxy credentials, but don't count on a
+    free/trial proxy tier to solve this.
 - **App sleeps on inactivity.** Streamlit Community Cloud apps go to sleep after ~a
   few days with no traffic and take ~30-60s to wake on the next visit.
 - **Resource limits.** Free tier caps CPU/RAM (roughly 1 vCPU / 1 GB) and concurrent

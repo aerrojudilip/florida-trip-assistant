@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+import requests
 import yt_dlp
 from youtube_transcript_api import (
     IpBlocked,
@@ -19,6 +20,8 @@ from core.exceptions import EmptyContentError, InvalidLinkError, TranscriptUnava
 YOUTUBE_ID_PATTERNS = [
     r"(?:v=|/videos/|embed/|youtu\.be/|/v/|/e/|watch\?v=)([A-Za-z0-9_-]{11})",
 ]
+
+SUBTITLE_LANG = "en"
 
 
 def extract_video_id(url: str) -> str:
@@ -43,17 +46,43 @@ def format_timestamp(seconds: float | None) -> str:
     return format_duration(int(seconds or 0)) or "0:00"
 
 
-def fetch_video_metadata(video_id: str) -> dict:
-    """Fetch title, channel, duration, publish date, and chapters via yt-dlp.
+def _select_subtitle_url(subtitles: dict, automatic_captions: dict, lang: str = SUBTITLE_LANG) -> str | None:
+    """Prefer human-written subtitles over auto-generated captions, in vtt format."""
+    for track_map in (subtitles, automatic_captions):
+        for fmt in track_map.get(lang) or []:
+            if fmt.get("ext") == "vtt":
+                return fmt.get("url")
+    return None
 
-    yt-dlp scrapes the same YouTube pages a browser would, which is more resilient
-    and far richer than the lightweight oEmbed endpoint (adds channel/duration/chapters).
+
+def _vtt_to_text(vtt_content: str) -> str:
+    lines = []
+    for raw_line in vtt_content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("WEBVTT", "Kind:", "Language:")) or "-->" in line or line.isdigit():
+            continue
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        if line and (not lines or lines[-1] != line):
+            lines.append(line)
+    return " ".join(lines)
+
+
+def fetch_video_data(video_id: str) -> dict:
+    """Fetch title, channel, duration, chapters, and a subtitle URL (if any) via yt-dlp.
+
+    yt-dlp scrapes the same YouTube pages a browser would, which is more resilient and
+    far richer than the lightweight oEmbed endpoint (adds channel/duration/chapters),
+    and its own subtitle-track discovery works with cookie auth where the separate
+    youtube-transcript-api library currently does not (its cookie support is disabled).
     """
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitleslangs": [SUBTITLE_LANG],
     }
     proxy_url = get_youtube_proxy_url()
     if proxy_url:
@@ -89,12 +118,25 @@ def fetch_video_metadata(video_id: str) -> dict:
         "duration": format_duration(info.get("duration")),
         "upload_date": upload_date,
         "chapters": chapters,
+        "subtitle_url": _select_subtitle_url(info.get("subtitles") or {}, info.get("automatic_captions") or {}),
     }
 
 
-def fetch_transcript(video_id: str) -> str:
-    # A proxy (see get_youtube_proxy_config) is optional but useful on hosts YouTube has
-    # rate-limited or blocked — the library raises IpBlocked/RequestBlocked in that case.
+def fetch_transcript(video_id: str, subtitle_url: str | None = None) -> str:
+    if subtitle_url:
+        try:
+            response = requests.get(subtitle_url, timeout=20)
+            response.raise_for_status()
+            text = _vtt_to_text(response.text)
+            if text:
+                return text
+        except requests.RequestException:
+            pass  # fall through to youtube-transcript-api below
+
+    # Fallback: youtube-transcript-api. A proxy (see get_youtube_proxy_config) is optional
+    # but useful on hosts YouTube has rate-limited or blocked — the library raises
+    # IpBlocked/RequestBlocked in that case. Note this library's cookie support is
+    # currently disabled upstream, so it can't benefit from YT_COOKIES_*.
     api = YouTubeTranscriptApi(proxy_config=get_youtube_proxy_config())
     try:
         transcript = api.fetch(video_id)
@@ -129,8 +171,8 @@ def clean_transcript(text: str, sentences_per_paragraph: int = 5) -> str:
 
 def ingest_youtube(url: str) -> dict:
     video_id = extract_video_id(url)
-    metadata = fetch_video_metadata(video_id)
-    raw_transcript = fetch_transcript(video_id)
+    metadata = fetch_video_data(video_id)
+    raw_transcript = fetch_transcript(video_id, metadata.get("subtitle_url"))
     cleaned = clean_transcript(raw_transcript)
 
     if not cleaned:
