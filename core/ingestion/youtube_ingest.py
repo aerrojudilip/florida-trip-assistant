@@ -13,7 +13,7 @@ from youtube_transcript_api import (
     YouTubeTranscriptApi,
 )
 
-from core.config import get_youtube_proxy_config, get_youtube_proxy_url
+from core.config import get_youtube_cookie_options, get_youtube_proxy_config, get_youtube_proxy_url
 from core.exceptions import EmptyContentError, InvalidLinkError, TranscriptUnavailableError
 
 YOUTUBE_ID_PATTERNS = [
@@ -58,12 +58,20 @@ def fetch_video_metadata(video_id: str) -> dict:
     proxy_url = get_youtube_proxy_url()
     if proxy_url:
         ydl_opts["proxy"] = proxy_url
+    ydl_opts.update(get_youtube_cookie_options())
 
     watch_url = f"https://www.youtube.com/watch?v={video_id}"
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(watch_url, download=False)
     except yt_dlp.utils.DownloadError as exc:
+        message = str(exc)
+        if "Sign in to confirm" in message or "not a bot" in message:
+            raise InvalidLinkError(
+                f"YouTube is requiring sign-in verification for video {video_id}. Set "
+                f"YT_COOKIES_FILE (a cookies.txt exported from a logged-in browser) or, "
+                f"for local runs, YT_COOKIES_FROM_BROWSER (e.g. 'chrome') and retry."
+            ) from exc
         raise InvalidLinkError(f"Could not fetch metadata for video {video_id}: {exc}") from exc
 
     upload_date = info.get("upload_date")

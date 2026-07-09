@@ -102,6 +102,29 @@ def get_youtube_proxy_url() -> str | None:
     return os.getenv("YT_PROXY_URL") or os.getenv("YT_PROXY_HTTPS") or os.getenv("YT_PROXY_HTTP")
 
 
+def get_youtube_cookie_options() -> dict:
+    """yt-dlp options for passing YouTube cookies, for "Sign in to confirm you're not a
+    bot" errors. Checked in this order:
+
+    1. YT_COOKIES_FILE — path to a Netscape-format cookies.txt exported from a logged-in
+       browser session. Works anywhere, including headless cloud hosts.
+    2. YT_COOKIES_FROM_BROWSER — a browser name (e.g. "chrome", "firefox", "edge") installed
+       on THIS machine; yt-dlp reads its cookies directly. Local use only — there's no
+       browser to read from on a cloud host.
+
+    Returns an empty dict if neither is configured.
+    """
+    cookies_file = os.getenv("YT_COOKIES_FILE")
+    if cookies_file:
+        return {"cookiefile": cookies_file}
+
+    browser = os.getenv("YT_COOKIES_FROM_BROWSER")
+    if browser:
+        return {"cookiesfrombrowser": (browser,)}
+
+    return {}
+
+
 def get_api_key(provider: str) -> str | None:
     """Look up an API key from env vars first, then Streamlit secrets (for cloud deployment)."""
     env_var = _ENV_VAR_BY_PROVIDER.get(provider)

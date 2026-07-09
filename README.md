@@ -210,7 +210,16 @@ than Streamlit Cloud's sleep-on-inactivity behavior, though storage is equally e
   `WEBSHARE_PROXY_USERNAME`/`WEBSHARE_PROXY_PASSWORD` (preferred — the library's built-in
   Webshare integration auto-rotates IPs and retries; free tier at webshare.io) or
   `YT_PROXY_URL` for any other proxy — set it before
-  relying on YouTube ingestion in production.
+  relying on YouTube ingestion in production. Note: a *static* proxy IP (datacenter or a
+  single fixed residential IP) can already be flagged by YouTube too — only a rotating
+  residential pool reliably avoids this.
+- **"Sign in to confirm you're not a bot."** A separate YouTube bot-check that hits
+  `yt-dlp`'s metadata fetch specifically (independent of the transcript-fetch block
+  above). Fix with `YT_COOKIES_FILE` (path to a cookies.txt exported from a logged-in
+  browser — works on cloud hosts too) or `YT_COOKIES_FROM_BROWSER` (browser name, local
+  runs only, since there's no browser to read from on a headless host). Use a
+  throwaway/secondary Google account for this, not your main one — automated requests
+  carry a small risk of the account being flagged.
 - **App sleeps on inactivity.** Streamlit Community Cloud apps go to sleep after ~a
   few days with no traffic and take ~30-60s to wake on the next visit.
 - **Resource limits.** Free tier caps CPU/RAM (roughly 1 vCPU / 1 GB) and concurrent
